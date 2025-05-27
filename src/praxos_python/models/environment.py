@@ -84,7 +84,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
                 response_data = self._client._request(
                     "POST", f"sources", params={"environment_id": self.id}, data=form_data, files=files
                 )
-            return SyncSource(client=self._client, id=response_data["id"], environment_id=self.id, **response_data)
+            return SyncSource(client=self._client, **response_data)
         except FileNotFoundError:
             raise ValueError(f"File not found: {file_path}")
         except Exception as e:
