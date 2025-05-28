@@ -1,6 +1,5 @@
-# my_api_sdk/__init__.py
 """
-My Awesome API SDK - Final Refactor with Model Separation!
+Praxos Python SDK
 """
 from .config import ClientConfig, DEFAULT_BASE_URL, SDK_VERSION
 from .exceptions import APIError
@@ -27,5 +26,3 @@ __all__ = [
     'SyncEnvironment',
     'SyncSource',
 ]
-
-__version__ = SDK_VERSION
