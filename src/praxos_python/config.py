@@ -1,8 +1,18 @@
 from typing import Optional, Dict, Any, Union
 import httpx
+import sys
+
+try:
+    if sys.version_info >= (3, 8):
+        from importlib.metadata import version, PackageNotFoundError
+    else:
+        from importlib_metadata import version, PackageNotFoundError
+
+    SDK_VERSION = version("Praxos-python")
+except PackageNotFoundError:
+    SDK_VERSION = "0.0.0-dev"
 
 DEFAULT_BASE_URL = "https://api.praxos.ai/"
-SDK_VERSION = "0.1.0" ##@todo: fetch this from the pyproject.toml file somehow
 
 class ClientConfig:
     """Configuration settings for API clients."""
