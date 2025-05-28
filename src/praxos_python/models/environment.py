@@ -98,3 +98,20 @@ class SyncEnvironment(BaseEnvironmentAttributes):
 
         response_data = self._client._request("POST", f"/sources", params={"environment_id": self.id}, json_data=payload)
         return SyncSource(client=self._client, **response_data)
+    
+    def get_sources(self) -> List[SyncSource]:
+        """Gets all sources for the environment."""
+        response_data = self._client._request("GET", f"/sources", params={"environment_id": self.id})
+        return [SyncSource(client=self._client, **source) for source in response_data]
+
+    def get_source(self, source_id: str=None, source_name: str=None) -> SyncSource:
+        """Gets a source for the environment."""
+        if source_id is None and source_name is None:
+            raise ValueError("Either source_id or source_name must be provided")
+        
+        if source_id:
+            response_data = self._client._request("GET", f"/sources", params={"environment_id": self.id, "id": source_id})
+        else:
+            response_data = self._client._request("GET", f"/sources", params={"environment_id": self.id, "name": source_name})
+
+        return SyncSource(client=self._client, **response_data)
