@@ -1,6 +1,6 @@
 [project]
 name = "Praxos-python"
-version = "0.1.2"
+version = "0.1.3"
 description = "Python SDK for Praxos"
 authors = [{ name = "Masoud Kermani Poor", email = "masoud@praxos.ai" }]
 readme = "README.md"
