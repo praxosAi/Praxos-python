@@ -87,3 +87,14 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             raise ValueError(f"File not found: {file_path}")
         except Exception as e:
             raise APIError(status_code=0, message=f"Sync file upload failed: {str(e)}") from e
+        
+    def add_business_data(self, data: Dict[str, Any], name: str=None, description: str=None) -> SyncSource:
+        """Adds business data source."""
+        payload = {
+            "data": data,
+            "name": name,
+            "description": description
+        }
+
+        response_data = self._client._request("POST", f"/sources", params={"environment_id": self.id}, json_data=payload)
+        return SyncSource(client=self._client, **response_data)
