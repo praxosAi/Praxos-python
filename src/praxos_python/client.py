@@ -75,15 +75,17 @@ class SyncClient:
         response_data = self._request("GET", "environment")
         return [SyncEnvironment(client=self, id=env["id"], name=env["name"], created_at=env["created_at"]) for env in response_data]
     
-    # def get_environment(self, name: str) -> SyncEnvironment:
-    #     """Retrieves an environment by name."""
-    #     # MOCKED RESPONSE - Replace with actual API call using self._request
-    #     response_data = {
-    #         "id": f"env_sync_{name.replace(' ', '_')}_gt_456", "name": name,
-    #         "created_at": datetime.datetime.utcnow().isoformat()
-    #     }
-    #     # response_data = self._request("GET", f"/environments/{name}")
-    #     return SyncEnvironment(client=self, **response_data)
+    def get_environment(self, environment_id: str=None, environment_name: str=None) -> SyncEnvironment:
+        """Retrieves an environment by name or id."""
+
+        if environment_id is None and environment_name is None:
+            raise ValueError("Either environment_id or environment_name must be provided")
+        
+        if environment_id:
+            response_data = self._request("GET", "environment", params={"id": environment_id})
+        else:
+            response_data = self._request("GET", "environment", params={"name": environment_name})
+        return SyncEnvironment(client=self, id=response_data["id"], name=response_data["name"], created_at=response_data["created_at"])
 
     def close(self) -> None:
         """Closes the underlying httpx client."""
