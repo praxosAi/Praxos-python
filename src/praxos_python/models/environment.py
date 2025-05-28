@@ -64,11 +64,9 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         response_data = self._client._request("POST", f"/sources", params={"type": "conversation", "environment_id": self.id}, json_data=payload)
         return SyncSource(client=self._client, **response_data)
 
-    def add_file(self, file_path: str, source_name: str=None) -> SyncSource:
+    def add_file(self, file_path: str, name: str=None, description: str=None) -> SyncSource:
         """Adds a file source."""
         global ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE
-        if source_name is None:
-            source_name = os.path.basename(file_path)
 
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -79,8 +77,8 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         
         try:
             with open(file_path, 'rb') as f:
-                files = {'file': (source_name, f, ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE[file_extension])}
-                form_data = {"type": "file", "label": source_name}
+                files = {'file': (name, f, ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE[file_extension])}
+                form_data = {"type": "file", "name": name, "description": description}
                 response_data = self._client._request(
                     "POST", f"sources", params={"environment_id": self.id}, data=form_data, files=files
                 )
