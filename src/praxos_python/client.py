@@ -61,19 +61,19 @@ class SyncClient:
         self._request("GET", "api-token-validataion")
         
 
-    def create_environment(self, name: str) -> SyncEnvironment:
+    def create_environment(self, name: str, description: str=None) -> SyncEnvironment:
         """Creates an environment."""
 
         if not name:
             raise ValueError("Environment name is required")
 
-        response_data = self._request("POST", "environment", json_data={"name": name})
-        return SyncEnvironment(client=self, id=response_data["id"], name=response_data["name"], created_at=response_data["created_at"])
+        response_data = self._request("POST", "environment", json_data={"name": name, "description": description})
+        return SyncEnvironment(client=self, **response_data)
 
     def get_environments(self) -> List[SyncEnvironment]:
         """Retrieves all environments."""
         response_data = self._request("GET", "environment")
-        return [SyncEnvironment(client=self, id=env["id"], name=env["name"], created_at=env["created_at"]) for env in response_data]
+        return [SyncEnvironment(client=self, **env) for env in response_data]
     
     def get_environment(self, environment_id: str=None, environment_name: str=None) -> SyncEnvironment:
         """Retrieves an environment by name or id."""
@@ -85,7 +85,7 @@ class SyncClient:
             response_data = self._request("GET", "environment", params={"id": environment_id})
         else:
             response_data = self._request("GET", "environment", params={"name": environment_name})
-        return SyncEnvironment(client=self, id=response_data["id"], name=response_data["name"], created_at=response_data["created_at"])
+        return SyncEnvironment(client=self, **response_data)
 
     def close(self) -> None:
         """Closes the underlying httpx client."""

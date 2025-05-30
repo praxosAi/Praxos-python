@@ -15,16 +15,16 @@ class BaseEnvironmentAttributes:
     Base attributes for an Environment resource.
     Ensures consistent initialization with core fields.
     """
-    def __init__(self, id: str, name: str, created_at: str, **kwargs):
+    def __init__(self, id: str, name: str, created_at: str, description: str, **kwargs):
         self.id = id
         self.name = name
         self.created_at = created_at
-
+        self.description = description
 
 class SyncEnvironment(BaseEnvironmentAttributes):
     """Represents a synchronous Environment resource."""
-    def __init__(self, client, id: str, name: str, created_at: str, **data: Any):
-        super().__init__(id=id, name=name, created_at=created_at, **data)
+    def __init__(self, client, id: str, name: str, created_at: str, description: str, **data: Any):
+        super().__init__(id=id, name=name, created_at=created_at, description=description, **data)
         self._client = client
 
     def __repr__(self) -> str:
