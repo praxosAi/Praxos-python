@@ -23,7 +23,7 @@ class SyncSource(BaseSourceAttributes):
     def __repr__(self) -> str:
         return f"<SyncSource id='{self.id}' name='{self.name}'>"
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> str:
         """Gets the status of the source."""
-        print(f"SDK (Sync Source: {self.name}): API to get status...") 
-        return self._client._request("GET", f"/sources/{self.id}/status")
+        response_data = self._client._request("GET", f"/sources", params={"environment_id": self._environment_id, "id": self.id})
+        return response_data.get("status", "unknown")
