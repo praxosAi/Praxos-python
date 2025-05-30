@@ -75,16 +75,16 @@ class SyncClient:
         response_data = self._request("GET", "environment")
         return [SyncEnvironment(client=self, **env) for env in response_data]
     
-    def get_environment(self, environment_id: str=None, environment_name: str=None) -> SyncEnvironment:
+    def get_environment(self, id: str=None, name: str=None) -> SyncEnvironment:
         """Retrieves an environment by name or id."""
 
-        if environment_id is None and environment_name is None:
-            raise ValueError("Either environment_id or environment_name must be provided")
+        if id is None and name is None:
+            raise ValueError("Either id or name must be provided")
         
-        if environment_id:
-            response_data = self._request("GET", "environment", params={"id": environment_id})
+        if id:
+            response_data = self._request("GET", "environment", params={"id": id})
         else:
-            response_data = self._request("GET", "environment", params={"name": environment_name})
+            response_data = self._request("GET", "environment", params={"name": name})
         return SyncEnvironment(client=self, **response_data)
 
     def close(self) -> None:
