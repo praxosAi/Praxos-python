@@ -30,11 +30,11 @@ class SyncEnvironment(BaseEnvironmentAttributes):
     def __repr__(self) -> str:
         return f"<SyncEnvironment id='{self.id}' name='{self.name}'>"
 
-    def get_context(self, query: str, top_k: int = 1) -> Dict[str, Any]|List[Dict[str, Any]]:
+    def get_context(self, query: str, top_k: int = 1) -> Context|List[Context]:
         """Gets context for an LLM."""
         # print(f"SDK (Sync Env: {self.name}): API to get context for query '{query}'...") # For debugging
         response_data = self._client._request(
-            "POST", f"/search", json_data={"query": query, "top_k": top_k}
+            "POST", f"/search", json_data={"query": query, "top_k": top_k, "environment_id": self.id}
         )
 
         contexts = []
