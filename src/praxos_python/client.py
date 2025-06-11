@@ -5,7 +5,10 @@ from typing import Dict, Any, Optional, List
 from .config import ClientConfig
 from .exceptions import APIError, APIKeyInvalidError
 from .utils import parse_httpx_error, handle_response_content
-from .models import SyncEnvironment
+from .models import SyncEnvironment, SyncOntology
+from pydantic import BaseModel
+from typing import Type, Union
+from pydantic import TypeAdapter
 
 class SyncClient:
     """Synchronous client for interacting with the API."""
@@ -86,6 +89,39 @@ class SyncClient:
         else:
             response_data = self._request("GET", "environment", params={"name": name})
         return SyncEnvironment(client=self, **response_data)
+    
+    def create_ontology(self, name: str, schemas: List[Type[BaseModel]], description: str=None) -> SyncOntology:
+        """Creates an ontology."""
+        if not name:
+            raise ValueError("Ontology name is required")
+        
+        if not schemas:
+            raise ValueError("At least one schema is required")
+        
+        if not isinstance(schemas, list):
+            raise ValueError("Schemas must be a list")
+        
+        json_schema = TypeAdapter(Union[*schemas]).json_schema()
+        response_data = self._request("POST", "ontology", json_data={"name": name, "description": description, "schemas": json_schema})
+        return SyncOntology(client=self, **response_data)
+        
+    
+    def get_ontology(self, id: str=None, name: str=None) -> SyncOntology:
+        """Retrieves an ontology by name or id."""
+
+        if id is None and name is None:
+            raise ValueError("Either id or name must be provided")
+        
+        if id:
+            response_data = self._request("GET", "ontology", params={"id": id})
+        else:
+            response_data = self._request("GET", "ontology", params={"name": name})
+        return SyncOntology(client=self, **response_data)
+    
+    def get_ontologies(self) -> List[SyncOntology]:
+        """Retrieves all ontologies."""
+        response_data = self._request("GET", "ontology")
+        return [SyncOntology(client=self, **ontology) for ontology in response_data]
 
     def close(self) -> None:
         """Closes the underlying httpx client."""
