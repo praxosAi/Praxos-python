@@ -75,6 +75,9 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         if file_extension not in ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE:
             raise ValueError(f"File extension {file_extension} is not supported. Supported extensions are: {', '.join(ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE.keys())}")
         
+        if name is None:
+            name = '.'.join(os.path.basename(path).split('.')[:-1])
+
         try:
             with open(path, 'rb') as f:
                 files = {'file': (name, f, ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE[file_extension])}
