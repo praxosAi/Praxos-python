@@ -101,7 +101,7 @@ class SyncClient:
         if not isinstance(schemas, list):
             raise ValueError("Schemas must be a list")
         
-        json_schema = TypeAdapter(Union[*schemas]).json_schema()
+        json_schema = TypeAdapter(Union[tuple(schemas)]).json_schema()
         response_data = self._request("POST", "ontology", json_data={"name": name, "description": description, "schemas": json_schema})
         return SyncOntology(client=self, **response_data)
         
