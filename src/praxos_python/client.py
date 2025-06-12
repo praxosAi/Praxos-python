@@ -64,13 +64,15 @@ class SyncClient:
         self._request("GET", "api-token-validataion")
         
 
-    def create_environment(self, name: str, description: str=None) -> SyncEnvironment:
+    def create_environment(self, name: str, description: str=None, ontologies: List[Union[SyncOntology, str]]=None) -> SyncEnvironment:
         """Creates an environment."""
 
         if not name:
             raise ValueError("Environment name is required")
+        
+        ontology_ids = [ontology.id if isinstance(ontology, SyncOntology) else ontology for ontology in ontologies] if ontologies else None
 
-        response_data = self._request("POST", "environment", json_data={"name": name, "description": description})
+        response_data = self._request("POST", "environment", json_data={"name": name, "description": description, "ontology_ids": ontology_ids})
         return SyncEnvironment(client=self, **response_data)
 
     def get_environments(self) -> List[SyncEnvironment]:
