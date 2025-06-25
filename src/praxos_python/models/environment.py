@@ -1,5 +1,6 @@
 import os
-from typing import TYPE_CHECKING, List, Dict, Any
+from typing import List, Dict, Any, Type, Union
+from pydantic import BaseModel
 from .source import SyncSource
 from ..exceptions import APIError
 from .context import Context
@@ -45,6 +46,14 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             return contexts[0]
         else:
             return contexts
+    
+    def extract_items(self, schema: Union[str, Type[BaseModel]]):
+        """Extracts items from a schema."""
+        schema_name = schema if isinstance(schema, str) else schema.__name__
+
+        response_data = self._client._request("POST", f"/extract", json_data={"label": schema_name, "environment_id": self.id})
+        return response_data.get("items", [])
+        
 
     def add_conversation(self, messages: List[Message|Dict[str, str]], name: str=None, description: str=None) -> SyncSource:
         """Adds a conversation source."""
