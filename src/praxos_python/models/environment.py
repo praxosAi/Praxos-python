@@ -32,27 +32,192 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         return f"<SyncEnvironment id='{self.id}' name='{self.name}'>"
 
     def get_context(self, query: str, top_k: int = 1) -> Context|List[Context]:
-        """Gets context for an LLM."""
-        # print(f"SDK (Sync Env: {self.name}): API to get context for query '{query}'...") # For debugging
+        """Gets context for an LLM using vec_edge search modality."""
         response_data = self._client._request(
-            "POST", f"/search", json_data={"query": query, "top_k": top_k, "environment_id": self.id}
+            "POST", f"/search", json_data={"query": query, "top_k": top_k, "environment_id": self.id, "search_modality": "vec_edge"}
         )
 
         contexts = []
         for context in response_data["hits"]:
-            contexts.append(Context(score=context["score"], data=context["data"], sentence=context["sentence"]))
+            sentence = context.get("sentence", "")
+            contexts.append(Context(score=context["score"], data=context["data"], sentence=sentence))
 
         if top_k == 1:
             return contexts[0]
         else:
             return contexts
     
-    def extract_items(self, schema: Union[str, Type[BaseModel]]):
-        """Extracts items from a schema."""
+    def search(self, query: str = None, top_k: int = 10, search_modality: str = "vec_edge", 
+               source_id: str = None, target_type: str = None, source_type: str = None, 
+               node_ids: List[str] = None) -> List[Dict[str, Any]]:
+        """
+        Advanced search with multiple modalities.
+        
+        Args:
+            query: Search query text (required for vec_edge and type_vec)
+            top_k: Number of results to return
+            search_modality: "vec_edge", "type_vec", or "fetch_by_id"
+            source_id: Optional source ID filter
+            target_type: Optional target node type filter
+            source_type: Optional source node type filter
+            node_ids: List of node IDs (required for fetch_by_id)
+        
+        Returns:
+            List of search results with scores and data
+        """
+        payload = {
+            "environment_id": self.id,
+            "search_modality": search_modality,
+            "top_k": top_k
+        }
+        
+        if search_modality in ["vec_edge", "type_vec"]:
+            if not query:
+                raise ValueError(f"query is required for {search_modality} modality")
+            payload["query"] = query
+        
+        elif search_modality == "fetch_by_id":
+            if not node_ids:
+                raise ValueError("node_ids is required for fetch_by_id modality")
+            payload["node_ids"] = node_ids
+        
+        if source_id:
+            payload["source_id"] = source_id
+        if target_type:
+            payload["target_type"] = target_type
+        if source_type:
+            payload["source_type"] = source_type
+        
+        response_data = self._client._request("POST", "/search", json_data=payload)
+        return response_data.get("hits", [])
+    
+    def search_with_types(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search with automatic type inference using AI classification.
+        Uses the type_vec modality to automatically infer source and target types.
+        
+        Args:
+            query: Natural language search query
+            top_k: Number of results to return
+        
+        Returns:
+            List of search results with type classification metadata
+        """
+        return self.search(query=query, top_k=top_k, search_modality="type_vec")
+    
+    def fetch_by_ids(self, node_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Fetch nodes directly by their IDs.
+        
+        Args:
+            node_ids: List of node IDs to fetch
+        
+        Returns:
+            List of nodes with their data
+        """
+        return self.search(node_ids=node_ids, search_modality="fetch_by_id")
+    
+    def extract_items(self, schema: Union[str, Type[BaseModel]], source_id: str = None, page_idx: str = None):
+        """
+        Extracts entities from a schema/label.
+        
+        Args:
+            schema: Schema name or Pydantic model class
+            source_id: Optional source ID filter
+            page_idx: Optional page index filter
+        
+        Returns:
+            List of extracted entity items
+        """
         schema_name = schema if isinstance(schema, str) else schema.__name__
 
-        response_data = self._client._request("POST", f"/extract", json_data={"label": schema_name, "environment_id": self.id})
+        payload = {
+            "extraction_type": "entities",
+            "label": schema_name,
+            "environment_id": self.id
+        }
+        
+        if source_id:
+            payload["source_id"] = source_id
+        if page_idx:
+            payload["page_idx"] = page_idx
+
+        response_data = self._client._request("POST", f"/extract", json_data=payload)
         return response_data.get("items", [])
+    
+    def extract_literals(self, literal_type: str, mode: str = "literals_only", 
+                        source_id: str = None, page_idx: str = None) -> Dict[str, Any]:
+        """
+        Extract literals of a specific type from the graph.
+        
+        Args:
+            literal_type: Type of literal to extract (e.g., 'EmailType', 'PhoneNumberType')
+            mode: "literals_only" to get just the literals, "full_entities" to get entities with literals
+            source_id: Optional source ID filter
+            page_idx: Optional page index filter
+        
+        Returns:
+            Dictionary with extraction results based on mode
+        """
+        if mode not in ["literals_only", "full_entities"]:
+            raise ValueError("mode must be 'literals_only' or 'full_entities'")
+        
+        payload = {
+            "extraction_type": "literals",
+            "literal_type": literal_type,
+            "mode": mode,
+            "environment_id": self.id
+        }
+        
+        if source_id:
+            payload["source_id"] = source_id
+        if page_idx:
+            payload["page_idx"] = page_idx
+        
+        response_data = self._client._request("POST", "/extract", json_data=payload)
+        return response_data
+    
+    def get_all_emails(self, mode: str = "literals_only") -> Dict[str, Any]:
+        """
+        Convenience method to extract all email addresses.
+        
+        Args:
+            mode: "literals_only" or "full_entities"
+        
+        Returns:
+            Dictionary with email extraction results
+        """
+        return self.extract_literals("EmailType", mode=mode)
+    
+    def get_all_phone_numbers(self, mode: str = "literals_only") -> Dict[str, Any]:
+        """
+        Convenience method to extract all phone numbers.
+        
+        Args:
+            mode: "literals_only" or "full_entities"
+        
+        Returns:
+            Dictionary with phone number extraction results
+        """
+        return self.extract_literals("PhoneNumberType", mode=mode)
+    
+    def get_entities_with_emails(self) -> Dict[str, Any]:
+        """
+        Convenience method to get all entities that have email addresses.
+        
+        Returns:
+            Dictionary with entities and their email addresses
+        """
+        return self.extract_literals("EmailType", mode="full_entities")
+    
+    def get_entities_with_phone_numbers(self) -> Dict[str, Any]:
+        """
+        Convenience method to get all entities that have phone numbers.
+        
+        Returns:
+            Dictionary with entities and their phone numbers
+        """
+        return self.extract_literals("PhoneNumberType", mode="full_entities")
         
 
     def add_conversation(self, messages: List[Message|Dict[str, str]], name: str=None, description: str=None) -> SyncSource:
