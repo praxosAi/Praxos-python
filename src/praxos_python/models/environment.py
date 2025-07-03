@@ -47,39 +47,34 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         else:
             return contexts
     
-    def search(self, query: str = None, top_k: int = 10, search_modality: str = "vec_edge", 
-               source_id: str = None, target_type: str = None, source_type: str = None, 
-               node_ids: List[str] = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 10, search_modality: str = "vec_edge", 
+               source_id: str = None, target_type: str = None, source_type: str = None,
+               target_label: str = None, source_label: str = None, 
+               relationship_type: str = None, relationship_label: str = None) -> List[Dict[str, Any]]:
         """
         Advanced search with multiple modalities.
         
         Args:
-            query: Search query text (required for vec_edge and type_vec)
+            query: Search query text (required)
             top_k: Number of results to return
-            search_modality: "vec_edge", "type_vec", or "fetch_by_id"
+            search_modality: "vec_edge" or "type_vec"
             source_id: Optional source ID filter
             target_type: Optional target node type filter
             source_type: Optional source node type filter
-            node_ids: List of node IDs (required for fetch_by_id)
+            target_label: Optional target node label filter
+            source_label: Optional source node label filter
+            relationship_type: Optional relationship type filter
+            relationship_label: Optional relationship label filter
         
         Returns:
             List of search results with scores and data
         """
         payload = {
+            "query": query,
             "environment_id": self.id,
             "search_modality": search_modality,
             "top_k": top_k
         }
-        
-        if search_modality in ["vec_edge", "type_vec"]:
-            if not query:
-                raise ValueError(f"query is required for {search_modality} modality")
-            payload["query"] = query
-        
-        elif search_modality == "fetch_by_id":
-            if not node_ids:
-                raise ValueError("node_ids is required for fetch_by_id modality")
-            payload["node_ids"] = node_ids
         
         if source_id:
             payload["source_id"] = source_id
@@ -87,6 +82,14 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             payload["target_type"] = target_type
         if source_type:
             payload["source_type"] = source_type
+        if target_label:
+            payload["target_label"] = target_label
+        if source_label:
+            payload["source_label"] = source_label
+        if relationship_type:
+            payload["relationship_type"] = relationship_type
+        if relationship_label:
+            payload["relationship_label"] = relationship_label
         
         response_data = self._client._request("POST", "/search", json_data=payload)
         return response_data.get("hits", [])
@@ -105,17 +108,23 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         """
         return self.search(query=query, top_k=top_k, search_modality="type_vec")
     
-    def fetch_by_ids(self, node_ids: List[str]) -> List[Dict[str, Any]]:
+    def fetch_graph_nodes(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """
-        Fetch nodes directly by their IDs.
+        Fetch nodes from Neo4j graph by their node IDs.
         
         Args:
-            node_ids: List of node IDs to fetch
+            node_ids: List of Neo4j node IDs to fetch
         
         Returns:
-            List of nodes with their data
+            List of graph nodes with their properties and literals
         """
-        return self.search(node_ids=node_ids, search_modality="fetch_by_id")
+        payload = {
+            "node_ids": node_ids,
+            "environment_id": self.id
+        }
+        
+        response_data = self._client._request("POST", "/fetch-graph-nodes", json_data=payload)
+        return response_data.get("results", [])
     
     def extract_items(self, schema: Union[str, Type[BaseModel]], source_id: str = None, page_idx: str = None):
         """
