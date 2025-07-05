@@ -50,6 +50,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
     def search(self, query: str, top_k: int = 10, search_modality: str = "vec_edge", 
                source_id: str = None, target_type: str = None, source_type: str = None,
                target_label: str = None, source_label: str = None, 
+               target_type_oid: str = None, source_type_oid: str = None,
                relationship_type: str = None, relationship_label: str = None) -> List[Dict[str, Any]]:
         """
         Advanced search with multiple modalities.
@@ -63,6 +64,8 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             source_type: Optional source node type filter
             target_label: Optional target node label filter
             source_label: Optional source node label filter
+            target_type_oid: Optional target node type OID filter
+            source_type_oid: Optional source node type OID filter
             relationship_type: Optional relationship type filter
             relationship_label: Optional relationship label filter
         
@@ -86,6 +89,10 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             payload["target_label"] = target_label
         if source_label:
             payload["source_label"] = source_label
+        if target_type_oid:
+            payload["target_type_oid"] = target_type_oid
+        if source_type_oid:
+            payload["source_type_oid"] = source_type_oid
         if relationship_type:
             payload["relationship_type"] = relationship_type
         if relationship_label:
@@ -186,48 +193,6 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         response_data = self._client._request("POST", "/extract", json_data=payload)
         return response_data
     
-    def get_all_emails(self, mode: str = "literals_only") -> Dict[str, Any]:
-        """
-        Convenience method to extract all email addresses.
-        
-        Args:
-            mode: "literals_only" or "full_entities"
-        
-        Returns:
-            Dictionary with email extraction results
-        """
-        return self.extract_literals("EmailType", mode=mode)
-    
-    def get_all_phone_numbers(self, mode: str = "literals_only") -> Dict[str, Any]:
-        """
-        Convenience method to extract all phone numbers.
-        
-        Args:
-            mode: "literals_only" or "full_entities"
-        
-        Returns:
-            Dictionary with phone number extraction results
-        """
-        return self.extract_literals("PhoneNumberType", mode=mode)
-    
-    def get_entities_with_emails(self) -> Dict[str, Any]:
-        """
-        Convenience method to get all entities that have email addresses.
-        
-        Returns:
-            Dictionary with entities and their email addresses
-        """
-        return self.extract_literals("EmailType", mode="full_entities")
-    
-    def get_entities_with_phone_numbers(self) -> Dict[str, Any]:
-        """
-        Convenience method to get all entities that have phone numbers.
-        
-        Returns:
-            Dictionary with entities and their phone numbers
-        """
-        return self.extract_literals("PhoneNumberType", mode="full_entities")
-        
 
     def add_conversation(self, messages: List[Message|Dict[str, str]], name: str=None, description: str=None) -> SyncSource:
         """Adds a conversation source."""
