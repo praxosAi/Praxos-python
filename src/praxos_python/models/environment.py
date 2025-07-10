@@ -47,19 +47,26 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         else:
             return contexts
     
-    def search(self, query: str, top_k: int = 10, search_modality: str = "vec_edge", 
+    def search(self, query: str, top_k: int = 10, search_modality: str = "node_vec", 
                source_id: str = None, target_type: str = None, source_type: str = None,
                target_label: str = None, source_label: str = None, 
                target_type_oid: str = None, source_type_oid: str = None,
-               relationship_type: str = None, relationship_label: str = None) -> List[Dict[str, Any]]:
+               relationship_type: str = None, relationship_label: str = None,
+               # New node-based parameters
+               node_type: str = None, node_label: str = None, node_kind: str = None,
+               has_sentence: bool = None, include_graph_context: bool = True,
+               # Temporal filtering
+               temporal_filter: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         Advanced search with multiple modalities.
         
         Args:
             query: Search query text (required)
             top_k: Number of results to return
-            search_modality: "vec_edge" or "type_vec"
+            search_modality: "node_vec", "vec_edge", or "type_vec" (default: node_vec)
             source_id: Optional source ID filter
+            
+            # Legacy edge-based filters (for backward compatibility)
             target_type: Optional target node type filter
             source_type: Optional source node type filter
             target_label: Optional target node label filter
@@ -68,6 +75,16 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             source_type_oid: Optional source node type OID filter
             relationship_type: Optional relationship type filter
             relationship_label: Optional relationship label filter
+            
+            # New node-based filters (for node_vec searches)
+            node_type: Filter by node type (e.g., "schema:Person")
+            node_label: Filter by node label
+            node_kind: Filter by node kind ("entity", "literal", "edge_sentence")
+            has_sentence: Filter nodes that have generated sentences
+            include_graph_context: Include graph context in results
+            
+            # Temporal filtering
+            temporal_filter: Temporal filtering options (dict with timepoint_type, time_period, etc.)
         
         Returns:
             List of search results with scores and data
@@ -76,9 +93,11 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             "query": query,
             "environment_id": self.id,
             "search_modality": search_modality,
-            "top_k": top_k
+            "top_k": top_k,
+            "include_graph_context": include_graph_context
         }
         
+        # Legacy edge-based filters (for backward compatibility)
         if source_id:
             payload["source_id"] = source_id
         if target_type:
@@ -98,6 +117,18 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         if relationship_label:
             payload["relationship_label"] = relationship_label
         
+        # New node-based filters
+        if node_type:
+            payload["node_type"] = node_type
+        if node_label:
+            payload["node_label"] = node_label
+        if node_kind:
+            payload["node_kind"] = node_kind
+        if has_sentence is not None:
+            payload["has_sentence"] = has_sentence
+        if temporal_filter:
+            payload["temporal_filter"] = temporal_filter
+        
         response_data = self._client._request("POST", "/search", json_data=payload)
         return response_data.get("hits", [])
     
@@ -114,6 +145,108 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             List of search results with type classification metadata
         """
         return self.search(query=query, top_k=top_k, search_modality="type_vec")
+    
+    def search_entities(self, query: str, entity_types: List[str] = None, top_k: int = 10, 
+                       include_temporal: bool = False) -> List[Dict[str, Any]]:
+        """
+        Entity-centric search focusing on entities with generated sentences.
+        
+        Args:
+            query: Search query text
+            entity_types: Optional list of entity types to filter by
+            top_k: Number of results to return
+            include_temporal: Include temporal context in results
+        
+        Returns:
+            List of entity search results with comprehensive context
+        """
+        if entity_types:
+            # Search each entity type and combine results
+            all_results = []
+            for entity_type in entity_types:
+                results = self.search(
+                    query=query,
+                    search_modality="node_vec",
+                    node_kind="entity",
+                    node_type=entity_type,
+                    has_sentence=True,
+                    top_k=top_k,
+                    include_graph_context=True
+                )
+                all_results.extend(results)
+            
+            # Sort by score and limit results
+            all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+            return all_results[:top_k]
+        else:
+            return self.search(
+                query=query,
+                search_modality="node_vec",
+                node_kind="entity",
+                has_sentence=True,
+                top_k=top_k,
+                include_graph_context=True
+            )
+    
+    def search_temporal(self, query: str, timepoint_type: str = None, time_period: str = None, 
+                       top_k: int = 10) -> List[Dict[str, Any]]:
+        """
+        Temporal-aware search using TimePoint nodes for filtering.
+        
+        Args:
+            query: Search query text
+            timepoint_type: Type of TimePoint to filter by (e.g., "Quarter", "Month")
+            time_period: Specific time period (e.g., "2023-Q4", "January")
+            top_k: Number of results to return
+        
+        Returns:
+            List of search results filtered by temporal criteria
+        """
+        temporal_filter = {}
+        if timepoint_type:
+            temporal_filter["timepoint_type"] = timepoint_type
+        if time_period:
+            temporal_filter["time_period"] = time_period
+        
+        return self.search(
+            query=query,
+            search_modality="node_vec",
+            temporal_filter=temporal_filter if temporal_filter else None,
+            top_k=top_k,
+            include_graph_context=True
+        )
+    
+    def search_sentences(self, query: str, sentence_types: List[str] = None, 
+                        top_k: int = 10) -> List[Dict[str, Any]]:
+        """
+        Search within generated sentences across different node types.
+        
+        Args:
+            query: Search query text
+            sentence_types: Node kinds to search within (default: ["entity", "edge_sentence"])
+            top_k: Number of results to return
+        
+        Returns:
+            List of sentence-based search results
+        """
+        if not sentence_types:
+            sentence_types = ["entity", "edge_sentence"]
+        
+        all_results = []
+        for sentence_type in sentence_types:
+            results = self.search(
+                query=query,
+                search_modality="node_vec",
+                node_kind=sentence_type,
+                has_sentence=True,
+                top_k=top_k,
+                include_graph_context=True
+            )
+            all_results.extend(results)
+        
+        # Sort by score and limit results
+        all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        return all_results[:top_k]
     
     def fetch_graph_nodes(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """
