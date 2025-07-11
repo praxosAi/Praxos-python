@@ -497,15 +497,88 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         except Exception as e:
             raise APIError(status_code=0, message=f"Sync file upload failed: {str(e)}") from e
         
-    def add_business_data(self, data: Dict[str, Any], name: str=None, description: str=None) -> SyncSource:
-        """Adds business data source."""
+    def add_business_data(self, data: Dict[str, Any], name: str=None, description: str=None, 
+                         root_entity_type: str="schema:Thing", metadata: Dict[str, Any]=None,
+                         processing_config: Dict[str, Any]=None) -> SyncSource:
+        """
+        Adds business data source with enhanced JSON processing.
+        
+        Args:
+            data: JSON data to process
+            name: Optional source name
+            description: Optional description
+            root_entity_type: Root entity type for JSON processing (default: "schema:Thing")
+            metadata: Additional metadata for processing
+            processing_config: Custom processing configuration
+            
+        Returns:
+            SyncSource object
+        """
         payload = {
             "data": data,
             "name": name,
-            "description": description
+            "description": description,
+            "root_entity_type": root_entity_type,
+            "metadata": metadata or {},
+            "processing_config": processing_config or {}
         }
 
         response_data = self._client._request("POST", f"/sources", params={"environment_id": self.id}, json_data=payload)
+        return SyncSource(client=self._client, **response_data)
+    
+    def add_networkx_graph(self, graph, name: str=None, description: str=None,
+                          metadata: Dict[str, Any]=None, processing_config: Dict[str, Any]=None) -> SyncSource:
+        """
+        Adds a NetworkX graph as a source for processing.
+        
+        Args:
+            graph: NetworkX MultiDiGraph or DiGraph object
+            name: Optional source name
+            description: Optional description
+            metadata: Additional metadata for processing
+            processing_config: Custom processing configuration (e.g., skip steps)
+            
+        Returns:
+            SyncSource object
+            
+        Example:
+            import networkx as nx
+            G = nx.MultiDiGraph()
+            G.add_node("person_1", type="schema:Person", name="John Doe")
+            G.add_node("org_1", type="schema:Organization", name="Acme Corp")
+            G.add_edge("person_1", "org_1", type="WORKS_AT")
+            
+            source = env.add_networkx_graph(
+                graph=G,
+                name="my_graph",
+                processing_config={"generate_sentences": True, "generate_facts": False}
+            )
+        """
+        try:
+            import networkx as nx
+        except ImportError:
+            raise ImportError("NetworkX is required for graph ingestion. Install with: pip install networkx")
+        
+        if not isinstance(graph, (nx.MultiDiGraph, nx.DiGraph, nx.Graph, nx.MultiGraph)):
+            raise ValueError("Graph must be a NetworkX graph object")
+        
+        # Convert to node-link format for API transmission
+        graph_data = nx.node_link_data(graph)
+        
+        payload = {
+            "graph_data": graph_data,
+            "name": name,
+            "description": description,
+            "metadata": metadata or {},
+            "processing_config": processing_config or {}
+        }
+
+        response_data = self._client._request(
+            "POST", 
+            f"/sources", 
+            params={"environment_id": self.id, "type": "networkx_graph"}, 
+            json_data=payload
+        )
         return SyncSource(client=self._client, **response_data)
     
     def get_sources(self) -> List[SyncSource]:
