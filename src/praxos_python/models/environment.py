@@ -47,7 +47,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         else:
             return contexts
     
-    def search(self, query: str, top_k: int = 10, search_modality: str = "node_vec", 
+    def search(self, query: str, top_k: int = 10, search_modality: str = "fast", 
                source_id: str = None, target_type: str = None, source_type: str = None,
                target_label: str = None, source_label: str = None, 
                target_type_oid: str = None, source_type_oid: str = None,
@@ -56,14 +56,17 @@ class SyncEnvironment(BaseEnvironmentAttributes):
                node_type: str = None, node_label: str = None, node_kind: str = None,
                has_sentence: bool = None, include_graph_context: bool = True,
                # Temporal filtering
-               temporal_filter: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+               temporal_filter: Dict[str, Any] = None,
+               # Anchor-based filtering
+               known_anchors: List[Dict[str, Any]] = None, 
+               anchor_max_hops: int = 2) -> List[Dict[str, Any]]:
         """
         Advanced search with multiple modalities.
         
         Args:
             query: Search query text (required)
             top_k: Number of results to return
-            search_modality: "node_vec", "vec_edge", or "type_vec" (default: node_vec)
+            search_modality: "fast", "node_vec", "vec_edge", or "type_vec" (default: fast)
             source_id: Optional source ID filter
             
             # Legacy edge-based filters (for backward compatibility)
@@ -76,15 +79,24 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             relationship_type: Optional relationship type filter
             relationship_label: Optional relationship label filter
             
-            # New node-based filters (for node_vec searches)
+            # New node-based filters (for fast and node_vec searches)
             node_type: Filter by node type (e.g., "schema:Person")
             node_label: Filter by node label
             node_kind: Filter by node kind ("entity", "literal", "edge_sentence")
             has_sentence: Filter nodes that have generated sentences
-            include_graph_context: Include graph context in results
+            include_graph_context: Include graph context in results (node_vec provides advanced graph traversal)
             
             # Temporal filtering
             temporal_filter: Temporal filtering options (dict with timepoint_type, time_period, etc.)
+            
+            # Anchor-based filtering (for graph traversal from specific anchor points)
+            known_anchors: List of anchor points to constrain search space. Each anchor can specify:
+                          - id: Exact node ID
+                          - type: Node type (e.g., "PhoneType", "schema:Person")
+                          - label: Node label
+                          - value: Node value (for literals)
+                          - kind: Node kind ("entity", "literal")
+            anchor_max_hops: Maximum graph distance from any anchor point (default: 2)
         
         Returns:
             List of search results with scores and data
@@ -129,9 +141,45 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         if temporal_filter:
             payload["temporal_filter"] = temporal_filter
         
+        # Add anchor-based filtering if provided
+        if known_anchors:
+            payload["known_anchors"] = known_anchors
+            payload["anchor_max_hops"] = anchor_max_hops
+        
         response_data = self._client._request("POST", "/search", json_data=payload)
         return response_data.get("hits", [])
     
+    def search_fast(self, query: str, top_k: int = 10, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Fast Qdrant-based search with basic filtering.
+        Optimized for speed over complex graph relationships.
+        
+        Args:
+            query: Search query text
+            top_k: Number of results to return
+            **kwargs: Additional filters (node_type, node_kind, has_sentence, etc.)
+        
+        Returns:
+            List of search results optimized for speed
+        """
+        return self.search(query=query, top_k=top_k, search_modality="fast", **kwargs)
+    
+    def search_graph(self, query: str, top_k: int = 10, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Neo4j graph-aware search with relationship traversal.
+        Optimized for complex graph relationships and traversal.
+        
+        Args:
+            query: Search query text
+            top_k: Number of results to return
+            **kwargs: Additional filters and graph context options
+        
+        Returns:
+            List of search results with full graph context
+        """
+        kwargs.setdefault('include_graph_context', True)
+        return self.search(query=query, top_k=top_k, search_modality="node_vec", **kwargs)
+
     def search_with_types(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
         Search with automatic type inference using AI classification.
@@ -247,6 +295,83 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         # Sort by score and limit results
         all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
         return all_results[:top_k]
+    
+    def search_from_anchors(self, anchors: List[Dict[str, Any]], query: str, max_hops: int = 2, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Search entities within k-hops of specified anchor points.
+        
+        Args:
+            anchors: List of anchor points to constrain search space
+            query: Semantic search query for connected entities
+            max_hops: Maximum graph distance from any anchor point
+            **kwargs: Additional search parameters
+        
+        Returns:
+            List of entities within k-hops of anchor points
+        """
+        kwargs.setdefault('search_modality', 'node_vec')  # Force graph search
+        return self.search(
+            query=query,
+            known_anchors=anchors,
+            anchor_max_hops=max_hops,
+            **kwargs
+        )
+    
+    def search_from_element(self, element_id: str, query: str, max_hops: int = 2, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Search entities connected to a specific element ID.
+        
+        Args:
+            element_id: Node ID to start search from
+            query: Semantic search query for connected entities
+            max_hops: Maximum graph distance to traverse
+            **kwargs: Additional search parameters
+        
+        Returns:
+            List of entities connected to the known element
+        """
+        return self.search_from_anchors(
+            anchors=[{"id": element_id}],
+            query=query,
+            max_hops=max_hops,
+            **kwargs
+        )
+    
+    def search_from_phone(self, phone: str, query: str = "related entities", **kwargs) -> List[Dict[str, Any]]:
+        """
+        Search entities connected to a phone number.
+        
+        Args:
+            phone: Phone number to search from
+            query: What to look for (default: "related entities")
+            **kwargs: Additional search parameters
+        
+        Returns:
+            List of entities connected to the phone number
+        """
+        return self.search_from_anchors(
+            anchors=[{"value": phone, "type": "PhoneType"}],
+            query=query,
+            **kwargs
+        )
+    
+    def search_from_email(self, email: str, query: str = "related entities", **kwargs) -> List[Dict[str, Any]]:
+        """
+        Search entities connected to an email address.
+        
+        Args:
+            email: Email address to search from
+            query: What to look for (default: "related entities")
+            **kwargs: Additional search parameters
+        
+        Returns:
+            List of entities connected to the email
+        """
+        return self.search_from_anchors(
+            anchors=[{"value": email, "type": "EmailType"}],
+            query=query,
+            **kwargs
+        )
     
     def fetch_graph_nodes(self, node_ids: List[str]) -> List[Dict[str, Any]]:
         """
