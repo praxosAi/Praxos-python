@@ -1,4 +1,6 @@
 import os
+import time
+import logging
 from typing import List, Dict, Any, Type, Union
 from pydantic import BaseModel
 from .source import SyncSource
@@ -146,8 +148,19 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             payload["known_anchors"] = known_anchors
             payload["anchor_max_hops"] = anchor_max_hops
         
+        logger = logging.getLogger(__name__)
+        search_start = time.time()
+        
+        logger.info(f"PRAXOS-PYTHON: Starting search - query='{query[:50]}...', modality={search_modality}, top_k={top_k}")
+        
         response_data = self._client._request("POST", "/search", json_data=payload)
-        return response_data.get("hits", [])
+        
+        search_time = time.time() - search_start
+        results = response_data.get("hits", [])
+        
+        logger.info(f"PRAXOS-PYTHON: Search completed in {search_time:.3f}s, returned {len(results)} results")
+        
+        return results
     
     def search_fast(self, query: str, top_k: int = 10, **kwargs) -> List[Dict[str, Any]]:
         """

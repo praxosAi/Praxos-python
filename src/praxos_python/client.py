@@ -1,5 +1,7 @@
 # my_api_sdk/sync_client.py
 import httpx
+import time
+import logging
 from typing import Dict, Any, Optional, List
 
 from .config import ClientConfig
@@ -43,7 +45,16 @@ class SyncClient:
         data: Optional[Dict[str, Any]] = None,
         files: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
+        logger = logging.getLogger(__name__)
+        
+        # Log request details
+        request_start = time.time()
+        url = f"{self.config.base_url}/{endpoint.lstrip('/')}"
+        logger.info(f"PRAXOS-PYTHON: Starting {method} request to {url}")
+        
         try:
+            # Time the actual HTTP request
+            http_start = time.time()
             response = self._http_client.request(
                 method,
                 url=endpoint.lstrip('/'),
@@ -52,11 +63,31 @@ class SyncClient:
                 data=data,
                 files=files
             )
+            http_time = time.time() - http_start
+            
+            # Time response processing
+            processing_start = time.time()
             response.raise_for_status()
-            return handle_response_content(response)
+            result = handle_response_content(response)
+            processing_time = time.time() - processing_start
+            
+            total_time = time.time() - request_start
+            
+            logger.info(f"PRAXOS-PYTHON: {method} {endpoint} completed - "
+                       f"http_request={http_time:.3f}s, "
+                       f"response_processing={processing_time:.3f}s, "
+                       f"total_time={total_time:.3f}s, "
+                       f"status_code={response.status_code}")
+            
+            return result
+            
         except httpx.HTTPStatusError as e:
+            error_time = time.time() - request_start
+            logger.error(f"PRAXOS-PYTHON: {method} {endpoint} failed with HTTP error in {error_time:.3f}s - {e}")
             raise parse_httpx_error(e) from e
         except httpx.RequestError as e:
+            error_time = time.time() - request_start
+            logger.error(f"PRAXOS-PYTHON: {method} {endpoint} failed with request error in {error_time:.3f}s - {e}")
             raise APIError(status_code=0, message=f"Request failed: {str(e)}") from e
         
     def validate_api_key(self) -> None:
