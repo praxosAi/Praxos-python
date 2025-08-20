@@ -33,7 +33,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
     def __repr__(self) -> str:
         return f"<SyncEnvironment id='{self.id}' name='{self.name}'>"
 
-    def get_context(self, query: str, top_k: int = 1) -> Context|List[Context]:
+    def get_context(self, query: str, top_k: int = 1) -> Union[Context, List[Context]]:
         """Gets context for an LLM using vec_edge search modality."""
         response_data = self._client._request(
             "POST", f"/search", json_data={"query": query, "top_k": top_k, "environment_id": self.id, "search_modality": "vec_edge"}
@@ -49,7 +49,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         else:
             return contexts
     
-    def search(self, query: str, top_k: int = 10, search_modality: str = "fast", 
+    def search(self, query: str, top_k: int = 10, search_modality: str = "intelligent", 
                source_id: str = None, target_type: str = None, source_type: str = None,
                target_label: str = None, source_label: str = None, 
                target_type_oid: str = None, source_type_oid: str = None,
@@ -68,7 +68,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         Args:
             query: Search query text (required)
             top_k: Number of results to return
-            search_modality: "fast", "node_vec", "vec_edge", or "type_vec" (default: fast)
+            search_modality: "intelligent", "fast", "node_vec", "vec_edge", or "type_vec" (default: intelligent)
             source_id: Optional source ID filter
             
             # Legacy edge-based filters (for backward compatibility)
@@ -103,6 +103,11 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         Returns:
             List of search results with scores and data
         """
+        # Validate search modality  
+        valid_modalities = ["fast", "node_vec", "vec_edge", "type_vec", "intelligent"]
+        if search_modality not in valid_modalities:
+            raise ValueError(f"Invalid search modality. Must be one of: {valid_modalities}")
+        
         payload = {
             "query": query,
             "environment_id": self.id,
@@ -161,6 +166,84 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         logger.info(f"PRAXOS-PYTHON: Search completed in {search_time:.3f}s, returned {len(results)} results")
         
         return results
+    
+    def intelligent_search(self, query: str, max_results: int = 20, source_id: str = None, 
+                          enable_multi_strategy: bool = True, force_strategy: str = None) -> Dict[str, Any]:
+        """
+        AI-powered intelligent search that automatically analyzes queries and selects optimal strategies.
+        
+        This method uses AI to:
+        - Analyze query intent and extract meaningful terms
+        - Find relevant types from your type unification collection
+        - Detect temporal anchors and create appropriate filters
+        - Route through optimal search strategies (node_vec, fast, etc.)
+        - Combine results from multiple strategies when beneficial
+        
+        Args:
+            query: Natural language search query
+            max_results: Maximum results to return (default: 20)
+            source_id: Optional source ID filter
+            enable_multi_strategy: Allow backup strategies if primary doesn't return enough results (default: True)
+            force_strategy: Force a specific strategy, overriding AI selection (optional)
+        
+        Returns:
+            Dictionary containing:
+            - hits: List of search results
+            - intelligent_analysis: AI analysis metadata including:
+                - execution_plan: Strategy selection reasoning
+                - strategies_used: List of strategies executed
+                - type_analysis: Detected types and confidence
+                - execution_time: Total processing time
+        
+        Example:
+            # Simple intelligent search
+            results = env.intelligent_search("financial transactions in November 2023")
+            
+            # Access results
+            for hit in results["hits"]:
+                print(f"Score: {hit['score']:.3f}")
+                print(f"Sentence: {hit['sentence']}")
+                print(f"Data: {hit['data']}")
+            
+            # Access AI analysis
+            analysis = results["intelligent_analysis"]
+            print(f"Strategies used: {analysis['strategies_used']}")
+            print(f"Execution time: {analysis['execution_time']:.3f}s")
+        """
+        # Build search payload - intelligent search goes directly to search service
+        payload = {
+            "query": query,
+            "environment_id": self.id,
+            "search_modality": "intelligent",
+            "top_k": max_results,
+            "include_graph_context": True
+        }
+        
+        # Add optional parameters
+        if source_id:
+            payload["source_id"] = source_id
+        # Note: enable_multi_strategy and force_strategy are handled by the intelligent search service
+        
+        logger = logging.getLogger(__name__)
+        search_start = time.time()
+        
+        logger.info(f"PRAXOS-PYTHON: Starting intelligent search - query='{query[:50]}...', max_results={max_results}")
+        
+        # Call the search endpoint - the response will include intelligent analysis
+        response_data = self._client._request("POST", "/search", json_data=payload)
+        
+        search_time = time.time() - search_start
+        hits = response_data.get("hits", [])
+        
+        logger.info(f"PRAXOS-PYTHON: Intelligent search completed in {search_time:.3f}s, returned {len(hits)} results")
+        
+        # Return full response including intelligent analysis
+        return {
+            "hits": hits,
+            "intelligent_analysis": response_data.get("intelligent_analysis", {}),
+            "query_analysis": response_data.get("query_analysis", {}),
+            "graph_stats": response_data.get("graph_stats", {})
+        }
     
     def search_fast(self, query: str, top_k: int = 10, **kwargs) -> List[Dict[str, Any]]:
         """

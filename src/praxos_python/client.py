@@ -156,6 +156,7 @@ class SyncClient:
         response_data = self._request("GET", "ontology")
         return [SyncOntology(client=self, **ontology) for ontology in response_data]
 
+
     def close(self) -> None:
         """Closes the underlying httpx client."""
         self._http_client.close()
