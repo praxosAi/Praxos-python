@@ -548,7 +548,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         return response_data
     
 
-    def add_conversation(self, messages: List[Message|Dict[str, str]], name: str=None, description: str=None) -> SyncSource:
+    def add_conversation(self, messages: List[Union[Message, Dict[str, str]]], name: str=None, description: str=None) -> SyncSource:
         """Adds a conversation source."""
         if len(messages) == 0:
             raise ValueError("Messages must be a non-empty list")
@@ -676,6 +676,28 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             json_data=payload
         )
         return SyncSource(client=self._client, **response_data)
+
+    def enrich(self, node_ids: Union[str, List[str]], k: int = 2) -> Dict[str, Any]:
+        """
+        Enriches a given node or list of nodes by finding the closest entity and retrieving all entities up to k hops away.
+        
+        Args:
+            node_ids: A single node ID or a list of node IDs to enrich.
+            k: The number of hops to traverse for enrichment.
+        
+        Returns:
+            A dictionary containing the enriched data for each node.
+        """
+        if not node_ids:
+            raise ValueError("node_ids cannot be empty")
+
+        payload = {
+            "node_ids": node_ids,
+            "k": k,
+        }
+
+        response_data = self._client._request("POST", "/enrich", json_data=payload)
+        return response_data
     
     def get_sources(self) -> List[SyncSource]:
         """Gets all sources for the environment."""
