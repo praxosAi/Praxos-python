@@ -610,3 +610,45 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             response_data = self._client._request("GET", f"/sources", params={"environment_id": self.id, "name": name})
 
         return SyncSource(client=self._client, **response_data)
+
+    def ingest_trigger(self, text: str) -> Dict[str, Any]:
+        """
+        Ingests a natural language trigger into the system for this environment.
+
+        Args:
+            text: The natural language text of the trigger.
+
+        Returns:
+            A dictionary containing the ingestion status response.
+        """
+        if not text:
+            raise ValueError("Trigger text is required")
+
+        json_data = {
+            "text": text,
+            "environment_id": self.id,
+        }
+        return self._client._request("POST", "ingest-trigger", json_data=json_data)
+
+    def evaluate_event(self, event_json: Dict, provider: str) -> Dict[str, Any]:
+        """
+        Evaluates an incoming event against the rules in this environment.
+
+        Args:
+            event_json: The event payload as a dictionary.
+            provider: The source provider of the event (e.g., 'gmail', 'outlook').
+
+        Returns:
+            A dictionary containing the evaluation results, including any fired rules.
+        """
+        if not event_json:
+            raise ValueError("Event JSON is required")
+        if not provider:
+            raise ValueError("Provider is required")
+
+        json_data = {
+            "event_json": event_json,
+            "environment_id": self.id,
+            "provider": provider,
+        }
+        return self._client._request("POST", "evaluate-event", json_data=json_data)

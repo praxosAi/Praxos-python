@@ -185,54 +185,6 @@ class SyncClient:
             
         return self._request("POST", "search/type", json_data=json_data)
 
-    def ingest_trigger(self, text: str, environment_id: str) -> Dict[str, Any]:
-        """
-        Ingests a natural language trigger into the system.
-
-        Args:
-            text: The natural language text of the trigger.
-            environment_id: The ID of the environment to associate the trigger with.
-
-        Returns:
-            A dictionary containing the ingestion status response.
-        """
-        if not text:
-            raise ValueError("Trigger text is required")
-        if not environment_id:
-            raise ValueError("Environment ID is required")
-
-        json_data = {
-            "text": text,
-            "environment_id": environment_id,
-        }
-        return self._request("POST", "ingest-trigger", json_data=json_data)
-
-    def evaluate_event(self, event_json: Dict, environment_id: str, provider: str) -> Dict[str, Any]:
-        """
-        Evaluates an incoming event against the rules in the system.
-
-        Args:
-            event_json: The event payload as a dictionary.
-            environment_id: The ID of the environment to evaluate the event in.
-            provider: The source provider of the event (e.g., 'gmail', 'outlook').
-
-        Returns:
-            A dictionary containing the evaluation results, including any fired rules.
-        """
-        if not event_json:
-            raise ValueError("Event JSON is required")
-        if not environment_id:
-            raise ValueError("Environment ID is required")
-        if not provider:
-            raise ValueError("Provider is required")
-
-        json_data = {
-            "event_json": event_json,
-            "environment_id": environment_id,
-            "provider": provider,
-        }
-        return self._request("POST", "evaluate-event", json_data=json_data)
-
     def close(self) -> None:
         """Closes the underlying httpx client."""
         self._http_client.close()
