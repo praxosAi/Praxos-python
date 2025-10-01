@@ -156,6 +156,56 @@ class SyncClient:
         response_data = self._request("GET", "ontology")
         return [SyncOntology(client=self, **ontology) for ontology in response_data]
 
+    def search_types(self, description: str, environment_id: str, limit: Optional[int] = None, kind: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Searches for types based on a description.
+        
+        Args:
+            description: A natural language description of the type.
+            environment_id: The ID of the environment to search in.
+            limit: The maximum number of results to return.
+            kind: The kind of type to search for ('entity' or 'literal').
+        
+        Returns:
+            A dictionary containing the search results.
+        """
+        if not description:
+            raise ValueError("Description is required")
+        if not environment_id:
+            raise ValueError("Environment ID is required")
+
+        json_data = {
+            "description": description,
+            "environment_id": environment_id,
+        }
+        if limit:
+            json_data["limit"] = limit
+        if kind:
+            json_data["kind"] = kind
+            
+        return self._request("POST", "search/type", json_data=json_data)
+
+    def ingest_trigger(self, text: str, environment_id: str) -> Dict[str, Any]:
+        """
+        Ingests a natural language trigger into the system.
+
+        Args:
+            text: The natural language text of the trigger.
+            environment_id: The ID of the environment to associate the trigger with.
+
+        Returns:
+            A dictionary containing the ingestion status response.
+        """
+        if not text:
+            raise ValueError("Trigger text is required")
+        if not environment_id:
+            raise ValueError("Environment ID is required")
+
+        json_data = {
+            "text": text,
+            "environment_id": environment_id,
+        }
+        return self._request("POST", "ingest-trigger", json_data=json_data)
 
     def close(self) -> None:
         """Closes the underlying httpx client."""
