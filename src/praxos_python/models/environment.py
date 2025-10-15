@@ -49,9 +49,9 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         else:
             return contexts
     
-    def search(self, query: str, top_k: int = 10, search_modality: str = "intelligent", 
+    def search(self, query: str, top_k: int = 10, search_modality: str = "intelligent",
                source_id: str = None, target_type: str = None, source_type: str = None,
-               target_label: str = None, source_label: str = None, 
+               target_label: str = None, source_label: str = None,
                target_type_oid: str = None, source_type_oid: str = None,
                relationship_type: str = None, relationship_label: str = None,
                # New node-based parameters
@@ -60,8 +60,10 @@ class SyncEnvironment(BaseEnvironmentAttributes):
                # Temporal filtering
                temporal_filter: Dict[str, Any] = None,
                # Anchor-based filtering
-               known_anchors: List[Dict[str, Any]] = None, 
-               anchor_max_hops: int = 2) -> List[Dict[str, Any]]:
+               known_anchors: List[Dict[str, Any]] = None,
+               anchor_max_hops: int = 2,
+               # Filtering already-seen nodes
+               exclude_nodes: List[str] = None) -> List[Dict[str, Any]]:
         """
         Advanced search with multiple modalities.
         
@@ -152,7 +154,11 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         if known_anchors:
             payload["known_anchors"] = known_anchors
             payload["anchor_max_hops"] = anchor_max_hops
-        
+
+        # Add node exclusion filtering if provided
+        if exclude_nodes:
+            payload["exclude_node_ids"] = exclude_nodes
+
         logger = logging.getLogger(__name__)
         search_start = time.time()
         
@@ -677,14 +683,15 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         )
         return SyncSource(client=self._client, **response_data)
 
-    def enrich(self, node_ids: Union[str, List[str]], k: int = 2) -> Dict[str, Any]:
+    def enrich(self, node_ids: Union[str, List[str]], k: int = 2, generate_sentences: bool = False) -> Dict[str, Any]:
         """
         Enriches a given node or list of nodes by finding the closest entity and retrieving all entities up to k hops away.
-        
+
         Args:
             node_ids: A single node ID or a list of node IDs to enrich.
             k: The number of hops to traverse for enrichment.
-        
+            generate_sentences: Whether to generate contextual sentences using LLM (default: False)
+
         Returns:
             A dictionary containing the enriched data for each node.
         """
@@ -694,10 +701,116 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         payload = {
             "node_ids": node_ids,
             "k": k,
+            "generate_sentences": generate_sentences
         }
 
         response_data = self._client._request("POST", "/enrich", json_data=payload)
         return response_data
+
+    def extract_intelligent(self, query: str, strategy: str = 'entity_extraction',
+                           max_results: int = 20, source_id: str = None) -> Dict[str, Any]:
+        """
+        Use intelligent extraction to find entities or literals with forced strategy.
+        Leverages AI classification but forces a specific extraction strategy.
+
+        Args:
+            query: Natural language query describing what to extract
+            strategy: Extraction strategy - 'entity_extraction' or 'literal_extraction'
+            max_results: Maximum results to return
+            source_id: Optional source ID filter
+
+        Returns:
+            Dictionary containing:
+            - hits: List of extracted items
+            - intelligent_analysis: AI classification metadata
+            - strategies_used: Strategies executed
+
+        Examples:
+            # Extract all Person entities
+            people = env.extract_intelligent("people I know", strategy='entity_extraction')
+
+            # Extract all email addresses
+            emails = env.extract_intelligent("email addresses", strategy='literal_extraction')
+        """
+        if strategy not in ['entity_extraction', 'literal_extraction', 'anchored_entity_extraction', 'anchored_literal_extraction']:
+            raise ValueError(f"Invalid strategy. Must be one of: entity_extraction, literal_extraction, anchored_entity_extraction, anchored_literal_extraction")
+
+        # Use intelligent search endpoint with forced strategy
+        payload = {
+            "query": query,
+            "user_id": self._client.config.params.get("user_id", "default_user") if self._client.config.params else "default_user",
+            "environment_id": self.id,
+            "max_results": max_results,
+            "force_strategy": strategy,
+            "enable_multi_strategy": False  # Force single strategy
+        }
+
+        if source_id:
+            payload["source_id"] = source_id
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"PRAXOS-PYTHON: Intelligent extraction - query='{query[:50]}...', strategy={strategy}")
+
+        response_data = self._client._request("POST", "/search/intelligent", json_data=payload)
+
+        # Format response for easier consumption
+        return {
+            "hits": response_data.get("primary_results", []),
+            "intelligent_analysis": response_data.get("type_analysis", {}),
+            "strategies_used": response_data.get("strategies_used", []),
+            "execution_time": response_data.get("execution_time", 0)
+        }
+
+    def get_nodes_by_type(self, type_name: str, include_literals: bool = True,
+                         include_relationships: bool = False, source_id: str = None,
+                         max_results: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all nodes of a specific type with their properties.
+        Intuitive wrapper around extract_items for type-based retrieval.
+
+        Args:
+            type_name: Type or label of nodes to retrieve (e.g., "schema:Person", "Vehicle")
+            include_literals: Include connected literal properties (default: True)
+            include_relationships: Include connected entity relationships (default: False)
+            source_id: Optional source ID filter
+            max_results: Maximum results to return (default: 100)
+
+        Returns:
+            List of nodes with their properties and optional relationships
+
+        Examples:
+            # Get all Person entities
+            people = env.get_nodes_by_type("schema:Person")
+
+            # Get all vehicles from a specific source
+            vehicles = env.get_nodes_by_type("Vehicle", source_id="import_2024")
+
+            # Get integrations with relationships
+            integrations = env.get_nodes_by_type(
+                "schema:Integration",
+                include_relationships=True
+            )
+        """
+        logger = logging.getLogger(__name__)
+        logger.info(f"PRAXOS-PYTHON: Getting nodes by type - type={type_name}, include_literals={include_literals}")
+
+        # Use extract_items endpoint
+        payload = {
+            "label": type_name,
+            "environment_id": self.id,
+            "user_id": self._client.config.params.get("user_id", "default_user") if self._client.config.params else "default_user"
+        }
+
+        if source_id:
+            payload["source_id"] = source_id
+
+        response_data = self._client._request("POST", "/extract-items", json_data=payload)
+        results = response_data.get("results", [])
+
+        logger.info(f"PRAXOS-PYTHON: Found {len(results)} nodes of type {type_name}")
+
+        # Limit results
+        return results[:max_results]
     
     def get_sources(self) -> List[SyncSource]:
         """Gets all sources for the environment."""
