@@ -870,3 +870,228 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             "provider": provider,
         }
         return self._client._request("POST", "evaluate-event", json_data=json_data)
+
+    def create_entity(
+        self,
+        entity_type: str,
+        label: str,
+        properties: List[Dict[str, Any]],
+        nested_entities: Dict[str, Any] = None,
+        auto_type: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Create a new entity in the knowledge graph.
+
+        Args:
+            entity_type: Type of entity (e.g., "schema:Person", "Vehicle", "Organization")
+            label: Human-readable label for the entity
+            properties: List of property dicts with keys: 'key', 'value', optional 'type'
+            nested_entities: Optional nested entities to create and link
+            auto_type: Whether to auto-classify untyped properties (default: True)
+
+        Returns:
+            Ingest response with created node IDs and statistics
+
+        Examples:
+            # Create a person
+            result = env.create_entity(
+                entity_type="schema:Person",
+                label="Sarah Chen",
+                properties=[
+                    {"key": "email", "value": "sarah@company.com", "type": "EmailType"},
+                    {"key": "phone", "value": "555-1234", "type": "PhoneNumberType"},
+                    {"key": "role", "value": "Engineer"}  # Type will be auto-inferred
+                ]
+            )
+
+            # Create a vehicle
+            result = env.create_entity(
+                entity_type="Vehicle",
+                label="Tesla Model 3",
+                properties=[
+                    {"key": "make", "value": "Tesla"},
+                    {"key": "model", "value": "Model 3"},
+                    {"key": "year", "value": "2024"}
+                ]
+            )
+        """
+        if not entity_type or not label:
+            raise ValueError("entity_type and label are required")
+
+        if not properties or not isinstance(properties, list):
+            raise ValueError("properties must be a non-empty list")
+
+        entity_data = {
+            "type": entity_type,
+            "label": label,
+            "properties": properties
+        }
+
+        if nested_entities:
+            entity_data["nested_entities"] = nested_entities
+
+        payload = {
+            "data": entity_data,
+            "environment_id": self.id,
+            "auto_type": auto_type,
+            "generate_embeddings": True
+        }
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"PRAXOS-PYTHON: Creating entity - type={entity_type}, label={label}, properties={len(properties)}")
+
+        response_data = self._client._request("POST", "/graph-crud/ingest", json_data=payload)
+        return response_data
+
+    def update_literal(
+        self,
+        node_id: str,
+        new_value: Any,
+        new_type: str = None
+    ) -> Dict[str, Any]:
+        """
+        Update a literal node's value in the knowledge graph.
+
+        Args:
+            node_id: ID of the literal node to update
+            new_value: New value for the literal
+            new_type: Optional new type (e.g., change "StringType" to "EmailType")
+
+        Returns:
+            Update response with success status and modification count
+
+        Examples:
+            # Update a phone number
+            result = env.update_literal("literal_123", "555-9999")
+
+            # Update and retype
+            result = env.update_literal(
+                "literal_456",
+                "john@newcompany.com",
+                new_type="EmailType"
+            )
+        """
+        if not node_id:
+            raise ValueError("node_id is required")
+
+        payload = {
+            "value": new_value
+        }
+
+        if new_type:
+            payload["type"] = new_type
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"PRAXOS-PYTHON: Updating literal {node_id} to value: {new_value}")
+
+        response_data = self._client._request(
+            "PUT",
+            f"/graph-crud/update-literal/{node_id}",
+            json_data=payload
+        )
+        return response_data
+
+    def update_entity_properties(
+        self,
+        node_id: str,
+        properties: List[Dict[str, Any]],
+        replace_all: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Update an entity's properties by adding/modifying connected literal nodes.
+
+        Args:
+            node_id: ID of the entity node to update
+            properties: List of property dicts with keys: 'key', 'value', optional 'type'
+            replace_all: If True, replace ALL existing properties; if False, merge (default: False)
+
+        Returns:
+            Update response with modification statistics
+
+        Examples:
+            # Add new properties (merge mode)
+            result = env.update_entity_properties(
+                "person_123",
+                properties=[
+                    {"key": "linkedin", "value": "https://linkedin.com/in/sarah"},
+                    {"key": "title", "value": "Senior Engineer"}
+                ],
+                replace_all=False
+            )
+
+            # Replace all properties
+            result = env.update_entity_properties(
+                "vehicle_456",
+                properties=[
+                    {"key": "make", "value": "Tesla"},
+                    {"key": "model", "value": "Model Y"}  # Replaces all old properties
+                ],
+                replace_all=True
+            )
+        """
+        if not node_id:
+            raise ValueError("node_id is required")
+
+        if not properties or not isinstance(properties, list):
+            raise ValueError("properties must be a non-empty list")
+
+        payload = {
+            "properties": properties,
+            "replace_all": replace_all,
+            "environment_id": self.id
+        }
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"PRAXOS-PYTHON: Updating entity {node_id} with {len(properties)} properties (replace_all={replace_all})")
+
+        response_data = self._client._request(
+            "PUT",
+            f"/graph-crud/update-entity/{node_id}",
+            json_data=payload
+        )
+        return response_data
+
+    def delete_node(
+        self,
+        node_id: str,
+        cascade: bool = True,
+        force: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Delete a node from the knowledge graph (soft delete).
+
+        Args:
+            node_id: ID of the node to delete
+            cascade: If True, also delete connected literal properties (default: True)
+            force: If True, force delete even highly connected entities (default: False)
+
+        Returns:
+            Delete response with deletion statistics
+
+        Examples:
+            # Delete a literal
+            result = env.delete_node("literal_123")
+
+            # Delete an entity with cascade
+            result = env.delete_node("person_456", cascade=True)
+
+            # Force delete a highly connected entity
+            result = env.delete_node("org_789", cascade=True, force=True)
+        """
+        if not node_id:
+            raise ValueError("node_id is required")
+
+        params = {
+            "cascade": cascade,
+            "force": force
+        }
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"PRAXOS-PYTHON: Deleting node {node_id} (cascade={cascade}, force={force})")
+
+        response_data = self._client._request(
+            "DELETE",
+            f"/graph-crud/node/{node_id}",
+            params=params
+        )
+        return response_data

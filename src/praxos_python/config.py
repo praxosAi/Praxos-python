@@ -12,7 +12,7 @@ try:
 except PackageNotFoundError:
     SDK_VERSION = "0.0.0-dev"
 
-DEFAULT_BASE_URL = "https://api.praxos.ai/"
+DEFAULT_BASE_URL = "https://memory.mypraxos.com"
 
 class ClientConfig:
     """Configuration settings for API clients."""
