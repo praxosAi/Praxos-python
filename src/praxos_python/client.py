@@ -183,7 +183,88 @@ class SyncClient:
         if kind:
             json_data["kind"] = kind
             
-        return self._request("POST", "search/type", json_data=json_data)
+        return self._request("POST", "search-type", json_data=json_data)
+
+    def ingest_text(self, text: str, user_id: str, environment_id: Optional[str] = None, source_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Ingests raw text into the user's vector collection.
+        
+        Args:
+            text: The text content to ingest.
+            user_id: The ID of the user.
+            environment_id: Optional environment ID.
+            source_id: Optional source ID.
+            metadata: Optional additional metadata.
+            
+        Returns:
+            A dictionary with status and the ID of the ingested point.
+        """
+        if not text:
+            raise ValueError("Text is required")
+        if not user_id:
+            raise ValueError("User ID is required")
+            
+        json_data = {
+            "text": text,
+            "user_id": user_id,
+            "metadata": metadata or {}
+        }
+        if environment_id:
+            json_data["environment_id"] = environment_id
+        if source_id:
+            json_data["source_id"] = source_id
+            
+        return self._request("POST", "ingest-text", json_data=json_data)
+
+    def simple_search(self, query: str, user_id: str, top_k: int = 10) -> List[Dict[str, Any]]:
+        """
+        Performs a simple vector search returning basic source metadata.
+        
+        Args:
+            query: The search query.
+            user_id: The ID of the user.
+            top_k: Number of results to return (default 10).
+            
+        Returns:
+            A list of search results with scores and source metadata.
+        """
+        if not query:
+            raise ValueError("Query is required")
+        if not user_id:
+            raise ValueError("User ID is required")
+            
+        json_data = {
+            "query": query,
+            "user_id": user_id,
+            "top_k": top_k
+        }
+        
+        return self._request("POST", "simple-search", json_data=json_data)
+
+    def get_similar_context(self, query: str, user_id: str, top_k: int = 3) -> Dict[str, Any]:
+        """
+        Searches for similar historical documents to retrieve schema suggestions (Schema RAG).
+        
+        Args:
+            query: The text content to find similar documents for.
+            user_id: The ID of the user.
+            top_k: Number of similar documents to aggregate (default 3).
+            
+        Returns:
+            A dictionary containing suggested types and property maps.
+        """
+        if not query:
+            raise ValueError("Query is required")
+        if not user_id:
+            raise ValueError("User ID is required")
+            
+        json_data = {
+            "query": query,
+            "user_id": user_id,
+            "top_k": top_k
+        }
+        
+        return self._request("POST", "get-similar-context", json_data=json_data)
 
     def close(self) -> None:
         """Closes the underlying httpx client."""
