@@ -241,6 +241,40 @@ class SyncClient:
         
         return self._request("POST", "simple-search", json_data=json_data)
 
+    def get_usage(self) -> Dict[str, Any]:
+        """
+        Retrieves the current user's usage and memory cap.
+
+        Returns:
+            A dictionary containing user_id, usage_size, memory_cap, stripe_subscription_id, and tier.
+        """
+        return self._request("GET", "manage-subscription")
+
+    def update_subscription(self, memory_cap: int, stripe_subscription_id: Optional[str] = None, tier: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Updates the user's memory cap and optionally the stripe subscription ID and tier.
+
+        Args:
+            memory_cap: The new memory limit in bytes.
+            stripe_subscription_id: Optional Stripe subscription ID.
+            tier: Optional tier name (e.g., 'pro', 'personal').
+
+        Returns:
+            A dictionary with the updated user details.
+        """
+        if memory_cap is None:
+            raise ValueError("memory_cap is required")
+
+        json_data = {
+            "memory_cap": memory_cap
+        }
+        if stripe_subscription_id is not None:
+            json_data["stripe_subscription_id"] = stripe_subscription_id
+        if tier is not None:
+            json_data["tier"] = tier
+
+        return self._request("POST", "manage-subscription", json_data=json_data)
+
     def get_similar_context(self, query: str, user_id: str, top_k: int = 3) -> Dict[str, Any]:
         """
         Searches for similar historical documents to retrieve schema suggestions (Schema RAG).
