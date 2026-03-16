@@ -554,7 +554,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         return response_data
     
 
-    def add_conversation(self, messages: List[Union[Message, Dict[str, str]]], name: str=None, description: str=None) -> SyncSource:
+    def add_conversation(self, messages: List[Union[Message, Dict[str, str]]], name: str=None, description: str=None, metadata: Dict[str, Any]=None) -> SyncSource:
         """Adds a conversation source."""
         if len(messages) == 0:
             raise ValueError("Messages must be a non-empty list")
@@ -568,11 +568,13 @@ class SyncEnvironment(BaseEnvironmentAttributes):
 
         if name:
             payload["name"] = name
+        if metadata:
+            payload["metadata"] = metadata
 
         response_data = self._client._request("POST", f"/sources", params={"type": "conversation", "environment_id": self.id}, json_data=payload)
         return SyncSource(client=self._client, **response_data)
 
-    def add_file(self, path: str, name: str=None, description: str=None) -> SyncSource:
+    def add_file(self, path: str, name: str=None, description: str=None, metadata: Dict[str, Any]=None) -> SyncSource:
         """Adds a file source."""
         global ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE
 
@@ -590,6 +592,9 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             with open(path, 'rb') as f:
                 files = {'file': (name, f, ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE[file_extension])}
                 form_data = {"type": "file", "name": name, "description": description}
+                if metadata:
+                    import json
+                    form_data["metadata"] = json.dumps(metadata)
                 response_data = self._client._request(
                     "POST", f"sources", params={"environment_id": self.id}, data=form_data, files=files
                 )
