@@ -241,14 +241,19 @@ class SyncClient:
         
         return self._request("POST", "simple-search", json_data=json_data)
 
-    def get_usage(self) -> Dict[str, Any]:
+    def get_usage(self, breakdown: bool = False) -> Dict[str, Any]:
         """
         Retrieves the current user's usage and memory cap.
 
+        Args:
+            breakdown: If True, returns detailed usage breakdown by type and origin.
+
         Returns:
-            A dictionary containing user_id, usage_size, memory_cap, stripe_subscription_id, and tier.
+            A dictionary containing user_id, usage_size, memory_cap, stripe_subscription_id, tier,
+            and optionally usage_by_type and usage_by_origin.
         """
-        return self._request("GET", "manage-subscription")
+        params = {"breakdown": "true"} if breakdown else {}
+        return self._request("GET", "manage-subscription", params=params)
 
     def update_subscription(self, memory_cap: int, stripe_subscription_id: Optional[str] = None, tier: Optional[str] = None) -> Dict[str, Any]:
         """
