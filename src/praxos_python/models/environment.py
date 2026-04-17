@@ -13,6 +13,18 @@ ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE = {
     "json": "application/json",
 }
 
+ACCEPTABLE_SEMANTIC_SYNC_EXTENSIONS_TO_CONTENT_TYPE = {
+    "pdf": "application/pdf",
+    "json": "application/json",
+    "txt": "text/plain",
+    "md": "text/markdown",
+    "csv": "text/csv",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xls": "application/vnd.ms-excel",
+}
+
 class BaseEnvironmentAttributes:
     """
     Base attributes for an Environment resource.
@@ -584,7 +596,7 @@ class SyncEnvironment(BaseEnvironmentAttributes):
         file_extension = path.split('.')[-1]
         if file_extension not in ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE:
             raise ValueError(f"File extension {file_extension} is not supported. Supported extensions are: {', '.join(ACCEPTABLE_SOURCE_EXTENSIONS_TO_CONTENT_TYPE.keys())}")
-        
+
         if name is None:
             name = '.'.join(os.path.basename(path).split('.')[:-1])
 
@@ -603,6 +615,52 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             raise ValueError(f"File not found: {path}")
         except Exception as e:
             raise APIError(status_code=0, message=f"Sync file upload failed: {str(e)}") from e
+
+    def add_file_for_semantic_search(self, path: str, name: str = None, description: str = None,
+                                     metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Ingest a file into Praxos memory using the embedding-only path (chunk + embed
+        → Qdrant, no Praxolex/KG extraction). Use for qualitative queries over
+        long-form docs where semantic search matters more than structured facts.
+
+        Supports a wider set of formats than add_file (PDF, JSON, text, CSV, Markdown,
+        Word, Excel). The server chunks the file, embeds chunks, and stores them in a
+        per-user file-embedding collection with sync_type="embedding" metadata.
+        """
+        global ACCEPTABLE_SEMANTIC_SYNC_EXTENSIONS_TO_CONTENT_TYPE
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"File not found: {path}")
+
+        file_extension = path.split('.')[-1].lower()
+        if file_extension not in ACCEPTABLE_SEMANTIC_SYNC_EXTENSIONS_TO_CONTENT_TYPE:
+            raise ValueError(
+                f"File extension {file_extension} is not supported for semantic sync. "
+                f"Supported: {', '.join(ACCEPTABLE_SEMANTIC_SYNC_EXTENSIONS_TO_CONTENT_TYPE.keys())}"
+            )
+
+        if name is None:
+            name = '.'.join(os.path.basename(path).split('.')[:-1])
+
+        try:
+            with open(path, 'rb') as f:
+                files = {
+                    'file': (name, f, ACCEPTABLE_SEMANTIC_SYNC_EXTENSIONS_TO_CONTENT_TYPE[file_extension])
+                }
+                form_data = {"name": name, "description": description or ""}
+                if metadata:
+                    import json
+                    form_data["metadata"] = json.dumps(metadata)
+                response_data = self._client._request(
+                    "POST", "ingest-file-embedding",
+                    params={"environment_id": self.id},
+                    data=form_data, files=files,
+                )
+            return response_data
+        except FileNotFoundError:
+            raise ValueError(f"File not found: {path}")
+        except Exception as e:
+            raise APIError(status_code=0, message=f"Semantic file sync failed: {str(e)}") from e
         
     def add_business_data(self, data: Dict[str, Any], name: str=None, description: str=None, 
                          root_entity_type: str="schema:Thing", metadata: Dict[str, Any]=None,
@@ -875,6 +933,55 @@ class SyncEnvironment(BaseEnvironmentAttributes):
             "provider": provider,
         }
         return self._client._request("POST", "evaluate-event", json_data=json_data)
+
+    def evaluate_user_message(self, message_json: Dict, source: str,
+                              output_type: str = None, output_chat_id: str = None) -> Dict[str, Any]:
+        """
+        Evaluates an incoming user message against habits and triggers in this environment.
+
+        Args:
+            message_json: The user message payload (CanonUserMessage format).
+            source: The source platform (e.g., 'whatsapp', 'telegram', 'slack').
+            output_type: Optional output platform for dispatch routing.
+            output_chat_id: Optional chat/phone ID for dispatch routing.
+
+        Returns:
+            A dictionary containing fired triggers, fired habits, and dispatched actions.
+        """
+        if not message_json:
+            raise ValueError("Message JSON is required")
+        if not source:
+            raise ValueError("Source is required")
+
+        json_data = {
+            "message_json": message_json,
+            "environment_id": self.id,
+            "source": source,
+        }
+        if output_type:
+            json_data["output_type"] = output_type
+        if output_chat_id:
+            json_data["output_chat_id"] = output_chat_id
+        return self._client._request("POST", "evaluate-user-message", json_data=json_data)
+
+    def ingest_habit(self, text: str) -> Dict[str, Any]:
+        """
+        Ingests a natural language habit into the system for this environment.
+
+        Args:
+            text: The natural language text of the habit pattern.
+
+        Returns:
+            A dictionary containing the ingestion status response.
+        """
+        if not text:
+            raise ValueError("Habit text is required")
+
+        json_data = {
+            "text": text,
+            "environment_id": self.id,
+        }
+        return self._client._request("POST", "ingest-habit", json_data=json_data)
 
     def create_entity(
         self,
